@@ -57,7 +57,7 @@ unzip -q -o -d ${BUILD} ${DL}/$(basename ${MOS_REF_URL}) '3[25]0G/*'
 
 # Paths for the bits we need
 MOS120_DANIEL_PATH=local/multios_120_daniel.bin
-MOS120_IFEL_PATH=local/multios_120_ifel.bin
+MOS120_IFEL_PATH=local/multios_120_ifel_108.bin
 BLANK_PATH=local/blank.bin
 MOS320_PATH=${DL}/$(basename ${MOS320_URL})
 MOS350_PATH=${DL}/$(basename ${MOS350_URL})
