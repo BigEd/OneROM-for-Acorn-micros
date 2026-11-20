@@ -51,6 +51,9 @@ done
 BUILD=build
 mkdir -p ${BUILD}
 
+# Remove any existing slot images
+rm -f ${BUILD}/slot*
+
 # Unzip the various ZIP files to the build directory
 unzip -q -o -d ${BUILD} ${DL}/$(basename ${MMFS_URL})
 unzip -q -o -d ${BUILD} ${DL}/$(basename ${MOS_REF_URL}) '3[25]0G/*'
@@ -67,129 +70,132 @@ MOS350R_PATH=${BUILD}/350${MOS_REF_VER}/350${MOS_REF_VER}.bin
 
 # Build slot images (each one is a full 231024 128KB ROM image)
 #
-# Slots 0..5 use MMFS
-# Slots 6..7 use VFS
-# Slots 8..13 use MMFSv2 instead of MMFS
-# Slots 14..15 use VFS (identical to 6..7 so don't need to be programmed)
+# Jumper 3 and 2 select the main OS (320, 350, 120, Domesday)
+# Jumper 1 is Original (ish) vs Refreshed
+# Jumper 0 is MMFS vs MMFS2
+#
+#  0  "MOS 320/Y2K/MMFS"
+#  1  "MOS 320/Y2K/MMFS2"
+#  2  "MOS 320G Refreshed/MMFS"
+#  3  "MOS 320G Refreshed/MMFS2"
+#  4  "MOS 350/Y2K/MMFS"
+#  5  "MOS 350/Y2K/MMFS2"
+#  6  "MOS 350G Refreshed/MMFS"
+#  7  "MOS 350G Refreshed/MMFS2"
+#  8  "OS 120 Daniel/MMFS"
+#  9  "OS 120 Daniel/MMFS2"
+# 10  "OS 120 IFEL/MMFS"
+# 11  "OS 120 IFEL/MMFS2"
+# 12  "MOS 320/Y2K/VFS for Domesday"
+# 13  "MOS 350/Y2K/VFS for Domesday"
 
-SLOT=0
-for MMFS in MMFS MMFS2
+# Construct the PROG command on the fly
+PROG="${ONEROM} firmware build --board fire-28-d --plugin usb --save-config ${BUILD}/master.cfg --out ${BUILD}/master.bin"
+
+for SLOT in $(seq 0 13)
 do
-    # Use Master MMFS build for MOS 320/350 derivatives
-    MMFS_PATH=${BUILD}/${MMFS}/${MMFS_BUILD}/MAMMFS.rom
 
-    # Slot 0: MOS 320p with MMFS in ROM 10
-    # Slot 1: MOS 350p with MMFS in ROM 10
-    for MOS in ${MOS320_PATH} ${MOS350_PATH}
-    do
-        BIN=${BUILD}/slot${SLOT}.bin
-        cp ${MOS} ${BIN}
-        dd status=none if=${MMFS_PATH} of=${BIN} bs=16K oseek=2 count=1 conv=notrunc
-        SLOT=$((SLOT + 1))
-    done
+    # Default ROM type
+    TYPE="231024,cs1=0"
 
-    # Slot 2: Tom Seddon's Refreshed MOS 320 with MMFS in ROM 10 and Basic Editor moved to ROM 14
-    # Slot 3: Tom Seddon's Refreshed MOS 350 with MMFS in ROM 10 and Basic Editor moved to ROM 14
-    for MOS in ${MOS320R_PATH} ${MOS350R_PATH}
-    do
-        BIN=${BUILD}/slot${SLOT}.bin
-        cp ${MOS} ${BIN}
-        dd status=none if=${BIN} of=${BUILD}/rom10.bin bs=16K skip=2 count=1
-        dd status=none if=${MMFS_PATH} of=${BIN} bs=16K oseek=2 count=1 conv=notrunc
-        dd status=none if=${BUILD}/rom10.bin of=${BIN} bs=16K oseek=6 count=1 conv=notrunc
-        rm -f ${BUILD}/rom10.bin
-        SLOT=$((SLOT + 1))
-    done
+    # Setup base MOS
+    case "${SLOT}" in
+        0|1|12)
+            MOS=${MOS320_PATH}
+            LABEL="MOS 320/Y2K"
+            ;;
+        2|3)
+            MOS=${MOS320R_PATH}
+            LABEL="MOS 320${MOS_REF_VER} Refreshed"
+            ;;
+        4|5|13)
+            MOS=${MOS350_PATH}
+            LABEL="MOS 350/Y2K"
+            ;;
+        6|7)
+            MOS=${MOS350R_PATH}
+            LABEL="MOS 350${MOS_REF_VER} Refreshed"
+            ;;
+        8|9)
+            MOS=${MOS120_DANIEL_PATH}
+            LABEL="OS 120 Daniel"
+            ;;
+        10|11)
+            MOS=${MOS120_IFEL_PATH}
+            LABEL="OS 120 IFEL"
+            ;;
+    esac
 
-    # Use Model B MMFS Sideways RAM Bootloaded build for OS 120 derivatives
-    MMFS_PATH=${BUILD}/${MMFS}/${MMFS_BUILD}/ZMMFS.rom
+    # Setup the FS
+    case "${SLOT}" in
+        0|2|4|6)
+            FS_PATH=${BUILD}/MMFS/${MMFS_BUILD}/MAMMFS.rom
+            LABEL="${LABEL}/MMFS"
+            ;;
+        1|3|5|7)
+            FS_PATH=${BUILD}/MMFS2/${MMFS_BUILD}/MAMMFS.rom
+            LABEL="${LABEL}/MMFS2"
+            ;;
+        8|10)
+            FS_PATH=${BUILD}/MMFS/${MMFS_BUILD}/ZMMFS.rom
+            LABEL="${LABEL}/SWMMFS"
+            ;;
+        9|11)
+            FS_PATH=${BUILD}/MMFS2/${MMFS_BUILD}/ZMMFS.rom
+            LABEL="${LABEL}/SWMMFS2"
+            ;;
+        12|13)
+            FS_PATH=${VFS_PATH}
+            LABEL="${LABEL}/VFS for Domesday"
+            ;;
+    esac
 
-    # Slot 4: OS 120 Daniel
-    #
-    # Starting image (in this git repo) has:
-    #  8 - OS 1.20 with patches for Master
-    #  9 - Blank
-    # 10 - Blank
-    # 11 - Blank
-    # 12 - Blank
-    # 13 - Blank
-    # 14 - Blank
-    # 15 - Basic II
-    #
-    # Final image has:
-    #  8 - OS 1.20 with patches for Master
-    #  9 - Blank
-    # 10 - Blank
-    # 11 - SWMMFS Bootloader (downloaded version)
-    # 12 - Blank
-    # 13 - Blank
-    # 14 - Blank
-    # 15 - Basic II
-    MOS=${MOS120_DANIEL_PATH}
+    # Append the slot command
+    PROG="${PROG} --slot file=${BUILD}/slot13.bin,type=${TYPE},label='${LABEL}'"
+
+    # Create the output ilename
     BIN=${BUILD}/slot${SLOT}.bin
-    cp ${MOS} ${BIN}
-    dd status=none if=${MMFS_PATH} of=${BIN} bs=16K oseek=2 count=1 conv=notrunc
-    SLOT=$((SLOT + 1))
 
-    # Slot 5: OS 120 IFEL
-    #
-    # Starting image (in this git repo) has:
-    #  8 - OS 1.20 with patches for Master
-    #  9 - DFS 2.26
-    # 10 - Exmon II 2.02
-    # 11 - SWMMFS Boot Loader 1.45
-    # 12 - Wordwise Plus 1.4F
-    # 13 - Beebug Toolkit Plus
-    # 14 - Basic II
-    # 15 - Manager 1.07
-    #
-    # Final image has:
-    #  8 - OS 1.20 with patches for Master
-    #  9 - DFS 2.26
-    # 10 - Blank
-    # 11 - SWMMFS Boot Loader (downloaded version)
-    # 12 - Blank
-    # 13 - Blank
-    # 14 - Basic II
-    # 15 - Manager 1.07
-    MOS=${MOS120_IFEL_PATH}
-    BIN=${BUILD}/slot${SLOT}.bin
+    # Copy the base MOS
     cp ${MOS} ${BIN}
-    dd status=none if=${BLANK_PATH} of=${BIN} bs=16K oseek=2 count=1 conv=notrunc
-    dd status=none if=${MMFS_PATH}  of=${BIN} bs=16K oseek=3 count=1 conv=notrunc
-    dd status=none if=${BLANK_PATH} of=${BIN} bs=16K oseek=4 count=1 conv=notrunc
-    dd status=none if=${BLANK_PATH} of=${BIN} bs=16K oseek=5 count=1 conv=notrunc
-    SLOT=$((SLOT + 1))
 
-    # Slot 6: MOS 320p with VFS in ROM 10
-    # Slot 7: MOS 350p with VFS in ROM 10
-    for MOS in ${MOS320_PATH} ${MOS350_PATH}
-    do
-        BIN=${BUILD}/slot${SLOT}.bin
-        cp ${MOS} ${BIN}
-        dd status=none if=${VFS_PATH} of=${BIN} bs=16K oseek=2 count=1 conv=notrunc
-        SLOT=$((SLOT + 1))
-    done
+    # Custom actions
+    case "${SLOT}" in
+        # Tom Seddon's Refreshed MOS
+        2|3|6|7)
+            # Backup Basic Editor in slot 10
+            dd status=none if=${BIN} of=${BUILD}/rom10.bin bs=16K skip=2 count=1
+            # Move it to slot 14
+            dd status=none if=${BUILD}/rom10.bin of=${BIN} bs=16K oseek=6 count=1 conv=notrunc
+            # Tidy up
+            rm -f ${BUILD}/rom10.bin
+            ;;
+        10|11)
+            # Original image has:
+            #  8 - OS 1.20 with patches for Master
+            #  9 - DFS 2.26
+            # 10 - Exmon II 2.02
+            # 11 - SWMMFS Boot Loader 1.45
+            # 12 - Wordwise Plus 1.4F
+            # 13 - Beebug Toolkit Plus
+            # 14 - Basic II
+            # 15 - Manager 1.07
+            #
+            # Wipe slots 11,12,13
+            dd status=none if=${BLANK_PATH} of=${BIN} bs=16K oseek=3 count=1 conv=notrunc
+            dd status=none if=${BLANK_PATH} of=${BIN} bs=16K oseek=4 count=1 conv=notrunc
+            dd status=none if=${BLANK_PATH} of=${BIN} bs=16K oseek=5 count=1 conv=notrunc
+            ;;
+    esac
+
+    # Inject the filesystem into slot 10
+    dd status=none if=${FS_PATH} of=${BIN} bs=16K oseek=2 count=1 conv=notrunc
 
 done
 
-${ONEROM} firmware build --board fire-28-d --plugin usb \
-       --slot file=${BUILD}/slot0.bin,type=231024,cs1=0,label="MOS 320/Y2K/MMFS" \
-       --slot file=${BUILD}/slot1.bin,type=231024,cs1=0,label="MOS 350/Y2K/MMFS" \
-       --slot file=${BUILD}/slot2.bin,type=231024,cs1=0,label="MOS 320${MOS_REF_VER} Refreshed/MMFS" \
-       --slot file=${BUILD}/slot3.bin,type=231024,cs1=0,label="MOS 350${MOS_REF_VER} Refreshed/MMFS" \
-       --slot file=${BUILD}/slot4.bin,type=231024,cs1=0,label="OS 120 Daniel/MMFS" \
-       --slot file=${BUILD}/slot5.bin,type=231024,cs1=0,label="OS 120 IFEL/MMFS" \
-       --slot file=${BUILD}/slot6.bin,type=231024,cs1=0,label="MOS 320/Y2K/VFS for Domesday" \
-       --slot file=${BUILD}/slot7.bin,type=231024,cs1=0,label="MOS 350/Y2K/VFS for Domesday" \
-       --slot file=${BUILD}/slot8.bin,type=231024,cs1=0,label="MOS 320/Y2K/MMFS2" \
-       --slot file=${BUILD}/slot9.bin,type=231024,cs1=0,label="MOS 350/Y2K/MMFS2" \
-       --slot file=${BUILD}/slot10.bin,type=231024,cs1=0,label="MOS 320${MOS_REF_VER} Refreshed/MMFS2" \
-       --slot file=${BUILD}/slot11.bin,type=231024,cs1=0,label="MOS 350${MOS_REF_VER} Refreshed/MMFS2" \
-       --slot file=${BUILD}/slot12.bin,type=231024,cs1=0,label="OS 120 Daniel/MMFS2" \
-       --slot file=${BUILD}/slot13.bin,type=231024,cs1=0,label="OS 120 IFEL/MMFS2" \
-       --save-config ${BUILD}/master.cfg \
-       --out ${BUILD}/master.bin
+echo $PROG
+
+eval "${PROG}"
 
 grep label build/master.cfg | cut -d: -f2 | nl -v 0
 
