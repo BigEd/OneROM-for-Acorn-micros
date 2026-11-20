@@ -92,7 +92,7 @@ dd status=none if=${MOS120_IFEL_MGR_PATH} of=${MOS120_IFEL_PATH} bs=16K oseek=7 
 
 # Unzip the various ZIP files to the build directory
 unzip -q -o -d ${BUILD} ${DL}/$(basename ${MMFS_URL})
-unzip -q -o -d ${BUILD} ${DL}/$(basename ${MOS_REF_URL}) '3[25]0G/*'
+unzip -q -o -d ${BUILD} ${DL}/$(basename ${MOS_REF_URL}) "3[25]0${MOS_REF_VER}/*"
 
 # Paths for the bits we need
 
