@@ -47,6 +47,7 @@ do
    wget -P ${DL} -q -N ${URL}
 done
 
+
 # Create a build directory for artifacts
 BUILD=build
 mkdir -p ${BUILD}
@@ -54,13 +55,47 @@ mkdir -p ${BUILD}
 # Remove any existing slot images
 rm -f ${BUILD}/slot*
 
+# Standard BBC Basic
+
+echo "Downloading (if necessary) OS 1.20 bits"
+
+MOS120_BASIC2_PATH=${DL}/os120_basic2.bin
+wget -q -N -O ${MOS120_BASIC2_PATH} "https://tobylobster.github.io/rom_library/media/80/BASIC%20II%20%5Bvariant%201%5D.rom"
+
+# Reconstruct a 128K Daniel OS 1.20 Image (OS, blank, blank, blank, blank, blank, BASIC, Manager)
+
+MOS120_DANIEL_OS_PATH=${DL}/os120_daniel_os.bin
+wget -q -N -O ${MOS120_DANIEL_OS_PATH} "https://tobylobster.github.io/rom_library/media/340/MOS%20v1.20%20%5Bvariant%207%5D%20%5B'Patched%20by%20DJameson%202016'%5D.rom"
+
+MOS120_DANIEL_MGR_PATH=${DL}/os120_daniel_mgr.bin
+wget -q -N -O ${MOS120_DANIEL_MGR_PATH} "https://tobylobster.github.io/rom_library/media/63/Advanced%20Disc%20Toolkit%20v2.00.rom"
+
+MOS120_DANIEL_PATH=${BUILD}/os120_daniel.bin
+truncate -s 131072 ${MOS120_DANIEL_PATH}
+dd status=none if=${MOS120_DANIEL_OS_PATH}  of=${MOS120_DANIEL_PATH} bs=16K oseek=0 count=1 conv=notrunc
+dd status=none if=${MOS120_BASIC2_PATH}     of=${MOS120_DANIEL_PATH} bs=16K oseek=6 count=1 conv=notrunc
+dd status=none if=${MOS120_DANIEL_MGR_PATH} of=${MOS120_DANIEL_PATH} bs=16K oseek=7 count=1 conv=notrunc
+
+# Reconstruct a 128K IFEL OS 1.20 Image (OS, blank, blank, blank, blank, blank, BASIC, Manager)
+
+MOS120_IFEL_OS_PATH=${DL}/os120_ifel_os.bin
+wget -q -N -O ${MOS120_IFEL_OS_PATH} "https://tobylobster.github.io/rom_library/media/340/MOS%20v1.20%20%5Bvariant%208%5D.rom"
+
+MOS120_IFEL_MGR_PATH=${DL}/os120_ifel_mgr.bin
+wget -q -N -O ${MOS120_IFEL_MGR_PATH} "https://tobylobster.github.io/rom_library/media/1078/Manager%20v1.08.rom"
+
+MOS120_IFEL_PATH=${BUILD}/os120_ifel.bin
+truncate -s 131072 ${MOS120_IFEL_PATH}
+dd status=none if=${MOS120_IFEL_OS_PATH}  of=${MOS120_IFEL_PATH} bs=16K oseek=0 count=1 conv=notrunc
+dd status=none if=${MOS120_BASIC2_PATH}   of=${MOS120_IFEL_PATH} bs=16K oseek=6 count=1 conv=notrunc
+dd status=none if=${MOS120_IFEL_MGR_PATH} of=${MOS120_IFEL_PATH} bs=16K oseek=7 count=1 conv=notrunc
+
 # Unzip the various ZIP files to the build directory
 unzip -q -o -d ${BUILD} ${DL}/$(basename ${MMFS_URL})
 unzip -q -o -d ${BUILD} ${DL}/$(basename ${MOS_REF_URL}) '3[25]0G/*'
 
 # Paths for the bits we need
-MOS120_DANIEL_PATH=local/multios_120_daniel.bin
-MOS120_IFEL_PATH=local/multios_120_ifel_108.bin
+
 BLANK_PATH=local/blank.bin
 MOS320_PATH=${DL}/$(basename ${MOS320_URL})
 MOS350_PATH=${DL}/$(basename ${MOS350_URL})
@@ -70,7 +105,7 @@ MOS350R_PATH=${BUILD}/350${MOS_REF_VER}/350${MOS_REF_VER}.bin
 
 # Build slot images (each one is a full 231024 128KB ROM image)
 #
-# Jumper 3 and 2 select the main OS (320, 350, 120, Domesday)
+# Jumper 3 and 2 select the main OS (320, 350, 120, Custom)
 # Jumper 1 is Original (ish) vs Refreshed
 # Jumper 0 is MMFS vs MMFS2
 #
@@ -97,6 +132,13 @@ do
 
     # Default ROM type
     TYPE="231024,cs1=0"
+
+    # This doesn't work because there isn't a way in the CLI to set allow_cs_ignore
+    #case "${SLOT}" in
+    #    8|9|10|11)
+    #        TYPE="23512,cs1=0,cs2=ignore"
+    #    ;;
+    #esac
 
     # Setup base MOS
     case "${SLOT}" in
@@ -151,7 +193,7 @@ do
     esac
 
     # Append the slot command
-    PROG="${PROG} --slot file=${BUILD}/slot13.bin,type=${TYPE},label='${LABEL}'"
+    PROG="${PROG} --slot file=${BUILD}/slot${SLOT}.bin,type=${TYPE},label='${LABEL}'"
 
     # Create the output ilename
     BIN=${BUILD}/slot${SLOT}.bin
@@ -170,25 +212,9 @@ do
             # Tidy up
             rm -f ${BUILD}/rom10.bin
             ;;
-        10|11)
-            # Original image has:
-            #  8 - OS 1.20 with patches for Master
-            #  9 - DFS 2.26
-            # 10 - Exmon II 2.02
-            # 11 - SWMMFS Boot Loader 1.45
-            # 12 - Wordwise Plus 1.4F
-            # 13 - Beebug Toolkit Plus
-            # 14 - Basic II
-            # 15 - Manager 1.07
-            #
-            # Wipe slots 11,12,13
-            dd status=none if=${BLANK_PATH} of=${BIN} bs=16K oseek=3 count=1 conv=notrunc
-            dd status=none if=${BLANK_PATH} of=${BIN} bs=16K oseek=4 count=1 conv=notrunc
-            dd status=none if=${BLANK_PATH} of=${BIN} bs=16K oseek=5 count=1 conv=notrunc
-            ;;
     esac
 
-    # Inject the filesystem into slot 10
+    # Inject the filesystem into slot 10 in all builds
     dd status=none if=${FS_PATH} of=${BIN} bs=16K oseek=2 count=1 conv=notrunc
 
 done
